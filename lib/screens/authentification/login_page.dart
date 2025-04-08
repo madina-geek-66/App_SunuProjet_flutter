@@ -28,7 +28,7 @@ class LoginPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Get.theme.scaffoldBackgroundColor,
       body: Obx(
     () => authController.isLoading.value
         ? const Center(child: CircularProgressIndicator())

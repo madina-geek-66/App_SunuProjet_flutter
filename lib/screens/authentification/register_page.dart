@@ -11,7 +11,7 @@ class RegisterPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: Get.theme.scaffoldBackgroundColor,
         appBar: AppBar(
           backgroundColor: kPrimaryColor,
           leading: IconButton(

@@ -7,4 +7,5 @@ const kDarkColor = Color(0xff000000);
 const kWhiteColor = Color(0xffffffff);
 const kGreyColor = Color(0xffb9b9b9);
 const kErrorColor = Color(0xffff0000);
-const backgroundColor = Color(0xffefffef);
+const backgroundColor = Color(0xffdfe3df);
+const kCardColor = Color(0xff767776);

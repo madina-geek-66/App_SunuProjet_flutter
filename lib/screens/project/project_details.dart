@@ -6,6 +6,14 @@ import 'package:madina_diallo_l3gl_examen/config/constants_color.dart';
 import 'package:madina_diallo_l3gl_examen/controllers/projet/projet_controller.dart';
 import 'package:madina_diallo_l3gl_examen/models/projet.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../controllers/projet/projet_file_controller.dart';
+import '../../controllers/projet/tache_controller.dart';
+import '../../models/projet_file.dart';
+import '../../models/tache_model.dart';
+import 'add_member.dart';
+import 'add_task.dart';
 
 class ProjectDetailPage extends StatefulWidget {
   final String projectId;
@@ -24,6 +32,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    Get.find<TacheController>().fetchTachesByProject(widget.projectId);
   }
 
   @override
@@ -52,7 +61,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
       );
 
       return Scaffold(
-        backgroundColor: Colors.grey[50],
+        backgroundColor: Get.theme.scaffoldBackgroundColor,
         appBar: AppBar(
           backgroundColor: kPrimaryColor,
           leading: IconButton(
@@ -147,7 +156,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
                     style: TextStyle(
                       color: Colors.orange[800],
                       fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                      fontSize: 10,
                     ),
                   ),
                 ),
@@ -335,12 +344,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
     );
   }
 
-  // Onglets supplémentaires
-  Widget _buildTasksTab() {
-    return const Center(
-      child: Text('Contenu de l\'onglet Tâches à implémenter'),
-    );
-  }
+
 
   // Widget _buildMembersTab() {
   //   return const Center(
@@ -352,72 +356,64 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
     final currentUserId = projetController.currentUserId;
     final firestore = FirebaseFirestore.instance;
 
-    return Obx(() {
-      final projet = projetController.projects.firstWhere(
-            (p) => p.uid == widget.projectId,
-        // orElse: () => Projet(
-        //   uid: '',
-        //   titre: 'Projet non trouvé',
-        //   description: '',
-        //   dateDebut: DateTime.now(),
-        //   dateFin: DateTime.now(),
-        //   priorite: 'Moyenne',
-        //   statut: 'En attente',
-        //   progress: 0,
-        //   ownerId: '',
-        //   createdAt: DateTime.now(),
-        // ),
-      );
+    return Scaffold(
+      body: Obx(() {
+        final projet = projetController.projects.firstWhere(
+              (p) => p.uid == widget.projectId,
+        );
 
-      // Get all member IDs and roles from the project
-      final memberRoles = projet.memberRoles;
+        // Get all member IDs and roles from the project
+        final memberRoles = projet.memberRoles;
 
-      // if (memberRoles.isEmpty) {
-      //   return const Center(
-      //     child: Text(
-      //       'Aucun membre dans ce projet',
-      //       style: TextStyle(fontSize: 16, color: Colors.black54),
-      //     ),
-      //   );
-      // }
+        return FutureBuilder<List<Map<String, dynamic>>>(
+          future: _fetchMembersData(memberRoles.keys.toList()),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-      return FutureBuilder<List<Map<String, dynamic>>>(
-        future: _fetchMembersData(memberRoles.keys.toList()),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+            if (snapshot.hasError) {
+              return Center(child: Text('Erreur: ${snapshot.error}'));
+            }
 
-          if (snapshot.hasError) {
-            return Center(child: Text('Erreur: ${snapshot.error}'));
-          }
+            final membersData = snapshot.data ?? [];
 
-          final membersData = snapshot.data ?? [];
+            return ListView.builder(
+              itemCount: membersData.length,
+              padding: const EdgeInsets.all(16),
+              itemBuilder: (context, index) {
+                final memberData = membersData[index];
+                final memberId = memberData['userId'] as String;
+                final memberName = memberData['fullName'] as String? ?? memberId.split('@').first;
+                final memberEmail = memberData['email'] as String? ?? memberId;
+                final memberRole = memberRoles[memberId] ?? "Membre d'équipe";
+                final bool isCurrentUser = memberId == currentUserId;
 
-          return ListView.builder(
-            itemCount: membersData.length,
-            padding: const EdgeInsets.all(16),
-            itemBuilder: (context, index) {
-              final memberData = membersData[index];
-              final memberId = memberData['userId'] as String;
-              final memberName = memberData['fullName'] as String? ?? memberId.split('@').first;
-              final memberEmail = memberData['email'] as String? ?? memberId;
-              final memberRole = memberRoles[memberId] ?? "Membre d'équipe";
-              final bool isCurrentUser = memberId == currentUserId;
+                return _buildMemberCard(
+                  memberId: memberId,
+                  memberName: memberName,
+                  memberEmail: memberEmail,
+                  memberRole: memberRole,
+                  isCurrentUser: isCurrentUser,
+                  projectId: projet.uid,
+                );
+              },
+            );
+          },
+        );
+      }),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          // Modification ici - utiliser await avec Get.to pour attendre le retour
+          await Get.to(() => AddMemberPage(projectId: widget.projectId));
 
-              return _buildMemberCard(
-                memberId: memberId,
-                memberName: memberName,
-                memberEmail: memberEmail,
-                memberRole: memberRole,
-                isCurrentUser: isCurrentUser,
-                projectId: projet.uid,
-              );
-            },
-          );
+          // Ajouter un rafraîchissement explicite des données du projet
+          await projetController.fetchUserProjects();
         },
-      );
-    });
+        backgroundColor: kPrimaryColor,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
   }
 
   Widget _buildMemberCard({
@@ -581,8 +577,726 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
   }
 
   Widget _buildFilesTab() {
-    return const Center(
-      child: Text('Contenu de l\'onglet Fichiers à implémenter'),
+    final ProjetFileController projetFileController = Get.find<ProjetFileController>();
+    final currentUserId = Get.find<ProjetController>().currentUserId;
+    final projet = Get.find<ProjetController>().projects.firstWhere(
+          (p) => p.uid == widget.projectId,
+    );
+
+    // Déterminer le rôle de l'utilisateur actuel
+    final userRole = projet.memberRoles[currentUserId] ?? "Membre d'équipe";
+
+    return Scaffold(
+      body: Obx(() {
+        if (projetFileController.isLoading.value) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        return RefreshIndicator(
+          onRefresh: () => projetFileController.fetchProjectFiles(widget.projectId),
+          child: Column(
+            children: [
+              // Bouton Ajouter un fichier
+              Container(
+                margin: const EdgeInsets.all(16),
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => projetFileController.pickAndUploadFile(
+                      widget.projectId,
+                      userRole
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimaryColor,
+                    foregroundColor: kWhiteColor,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text('Ajouter un fichier', style: TextStyle(fontSize: 16)),
+                ),
+              ),
+
+              // Liste des fichiers
+              Expanded(
+                child: projetFileController.projectFiles.isEmpty
+                    ? const Center(child: Text('Aucun fichier pour ce projet'))
+                    : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: projetFileController.projectFiles.length,
+                  itemBuilder: (context, index) {
+                    final file = projetFileController.projectFiles[index];
+
+                    return FutureBuilder<String>(
+                      future: projetFileController.getUserName(file.ajoutePar),
+                      builder: (context, snapshot) {
+                        final String userName = snapshot.data ?? file.ajoutePar.split('@').first;
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: Colors.grey.shade200),
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(12),
+                            leading: _getFileIcon(file.type),
+                            title: Text(file.nom, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Text('Ajouté par: $userName'),
+                                Text('Taille: ${file.taille.toStringAsFixed(1)} MB • ${_formatDate(file.dateAjout)}'),
+                              ],
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.download, color: Colors.blue),
+                                  onPressed: () => _downloadFile(file),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: (userRole == "Chef de projet" || userRole == "Administrateur")
+                                      ? () => projetFileController.deleteFile(file)
+                                      : null,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
     );
   }
+
+// Mise à jour de la méthode de téléchargement pour fonctionner avec Supabase
+  Future<void> _downloadFile(ProjetFile file) async {
+    try {
+      // La méthode la plus simple est d'ouvrir l'URL dans le navigateur
+      // Comme l'URL est publique avec Supabase
+      if (await canLaunch(file.fileUrl)) {
+        await launch(file.fileUrl);
+      } else {
+        Get.snackbar(
+          'Erreur',
+          'Impossible d\'ouvrir ce fichier',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
+    } catch (e) {
+      Get.snackbar(
+        'Erreur',
+        'Erreur lors du téléchargement: ${e.toString()}',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  Widget _getFileIcon(String fileType) {
+    switch (fileType.toLowerCase()) {
+      case '.pdf':
+        return Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.red.shade50,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.picture_as_pdf, color: Colors.red, size: 28),
+        );
+      case '.doc':
+      case '.docx':
+        return Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.description, color: Colors.blue, size: 28),
+        );
+      case '.xlsx':
+      case '.xls':
+        return Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.green.shade50,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.table_chart, color: Colors.green, size: 28),
+        );
+      default:
+        return Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.insert_drive_file, color: Colors.grey, size: 28),
+        );
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+
+  Widget _buildTasksTab() {
+    final TacheController tacheController = Get.find<TacheController>();
+    final currentUserId = projetController.currentUserId;
+    final projet = projetController.projects.firstWhere(
+          (p) => p.uid == widget.projectId,
+    );
+
+    // Déterminer le rôle de l'utilisateur actuel
+    final userRole = projet.memberRoles[currentUserId] ?? "Membre d'équipe";
+    final bool canEdit = userRole == "Chef de projet" || userRole == "Administrateur";
+
+    return Scaffold(
+      body: Obx(() {
+        if (tacheController.isLoading.value) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final taches = tacheController.taches;
+
+        return RefreshIndicator(
+          onRefresh: () => tacheController.fetchTachesByProject(widget.projectId),
+          child: taches.isEmpty
+              ? Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.task_alt, size: 64, color: Colors.grey[400]),
+                const SizedBox(height: 16),
+                Text(
+                  'Aucune tâche pour ce projet',
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Ajoutez une tâche pour commencer',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[500],
+                  ),
+                ),
+              ],
+            ),
+          )
+              : ListView.builder(
+            itemCount: taches.length,
+            padding: const EdgeInsets.all(16),
+            itemBuilder: (context, index) {
+              final tache = taches[index];
+              return _buildTaskCard(tache, canEdit);
+            },
+          ),
+        );
+      }),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Get.to(() => AddTaskPage(projectId: widget.projectId));
+        },
+        backgroundColor: kPrimaryColor,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
+  }
+  Widget _buildTaskCard(Tache tache, bool canEdit) {
+    final TacheController tacheController = Get.find<TacheController>();
+
+    // Déterminer la couleur en fonction de la priorité
+    Color priorityColor;
+    switch (tache.priorite) {
+      case 'Basse':
+        priorityColor = Colors.green;
+        break;
+      case 'Moyenne':
+        priorityColor = Colors.blue;
+        break;
+      case 'Haute':
+        priorityColor = Colors.orange;
+        break;
+      case 'Urgente':
+        priorityColor = Colors.red;
+        break;
+      default:
+        priorityColor = Colors.blue;
+    }
+
+    // Déterminer la couleur en fonction du statut
+    Color statusColor;
+    switch (tache.statut) {
+      case 'A faire':
+        statusColor = Colors.grey;
+        break;
+      case 'En cours':
+        statusColor = Colors.blue;
+        break;
+      case 'Terminé':
+        statusColor = Colors.green;
+        break;
+      default:
+        statusColor = Colors.grey;
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: ExpansionTile(
+        title: Text(
+          tache.titre,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: priorityColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    tache.priorite,
+                    style: TextStyle(
+                      color: priorityColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    tache.statut,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Date limite: ${tacheController.formatDate(tache.dateLimite)}',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
+        leading: CircleAvatar(
+          backgroundColor: priorityColor.withOpacity(0.2),
+          child: Text(
+            tache.titre.substring(0, 1).toUpperCase(),
+            style: TextStyle(
+              color: priorityColor,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${tache.progression}%',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.keyboard_arrow_down,
+              color: Colors.grey[600],
+            ),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Description
+                const Text(
+                  'Description',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  tache.description.isEmpty
+                      ? 'Aucune description disponible'
+                      : tache.description,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Progress Bar
+                const Text(
+                  'Progression',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                LinearProgressIndicator(
+                  value: tache.progression / 100,
+                  backgroundColor: Colors.grey[200],
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    tache.progression < 30
+                        ? Colors.red
+                        : tache.progression < 70
+                        ? Colors.orange
+                        : Colors.green,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${tache.progression}%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    if (canEdit)
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline, size: 18),
+                            onPressed: tache.progression <= 0
+                                ? null
+                                : () {
+                              final newProgress = (tache.progression - 10).clamp(0, 100);
+                              tacheController.updateTacheProgression(tache.uid, newProgress);
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline, size: 18),
+                            onPressed: tache.progression >= 100
+                                ? null
+                                : () {
+                              final newProgress = (tache.progression + 10).clamp(0, 100);
+                              tacheController.updateTacheProgression(tache.uid, newProgress);
+                            },
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Membres assignés
+                const Text(
+                  'Membres assignés',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                FutureBuilder<Map<String, String>>(
+                  future: tacheController.getAssignedUsersNames(tache.assignesIds),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const CircularProgressIndicator();
+                    }
+
+                    final usersMap = snapshot.data ?? {};
+
+                    return Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: tache.assignesIds.map((userId) {
+                        final userName = usersMap[userId] ?? userId.split('@').first;
+                        final avatarLetter = userName.isNotEmpty ? userName[0].toUpperCase() : 'U';
+
+                        // Générer une couleur cohérente basée sur le nom
+                        final int nameHash = userName.hashCode.abs();
+                        final List<Color> avatarColors = [
+                          Colors.red, Colors.pink, Colors.purple, Colors.deepPurple,
+                          Colors.indigo, Colors.blue, Colors.lightBlue, Colors.cyan,
+                          Colors.teal, Colors.green, Colors.lightGreen, Colors.lime,
+                          Colors.yellow, Colors.amber, Colors.orange, Colors.deepOrange,
+                        ];
+                        final Color avatarColor = avatarColors[nameHash % avatarColors.length];
+
+                        return Chip(
+                          avatar: CircleAvatar(
+                            backgroundColor: avatarColor,
+                            child: Text(
+                              avatarLetter,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          label: Text(userName),
+                          backgroundColor: Colors.grey[100],
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Actions (changer le statut)
+                if (canEdit) ...[
+                  const Text(
+                    'Changer le statut',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildStatusTacheButton('A faire', tache, Colors.grey),
+                      _buildStatusTacheButton('En cours', tache, Colors.blue),
+                      _buildStatusTacheButton('Terminé', tache, Colors.green),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // Discussion
+                const Text(
+                  'Discussion',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Liste des commentaires
+                ...tache.discussions.isNotEmpty
+                    ? tache.discussions.map((comment) => _buildCommentItem(comment))
+                    : [
+                  Center(
+                    child: Text(
+                      'Aucun commentaire',
+                      style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+
+                // Ajouter un commentaire
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Ajouter un commentaire...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                        ),
+                        onSubmitted: (value) {
+                          if (value.isNotEmpty) {
+                            tacheController.addCommentToTache(
+                              tache.uid,
+                              projetController.currentUserId,
+                              value,
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.send, color: kPrimaryColor),
+                      onPressed: () {
+                        // Implémenté via onSubmitted pour simplifier
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusTacheButton(String status, Tache tache, Color color) {
+    final TacheController tacheController = Get.find<TacheController>();
+    final isActive = tache.statut == status;
+
+    return InkWell(
+      onTap: () {
+        tacheController.updateTacheStatus(tache.uid, status);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? color : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: color,
+            width: 1.5,
+          ),
+        ),
+        child: Text(
+          status,
+          style: TextStyle(
+            color: isActive ? Colors.white : color,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCommentItem(Map<String, dynamic> comment) {
+    final TacheController tacheController = Get.find<TacheController>();
+    final String userId = comment['userId'] ?? '';
+    final String message = comment['message'] ?? '';
+    final DateTime date = comment['date'] is DateTime
+        ? comment['date']
+        : (comment['date'] is Timestamp
+        ? (comment['date'] as Timestamp).toDate()
+        : DateTime.now());
+
+    return FutureBuilder<Map<String, String>>(
+      future: tacheController.getAssignedUsersNames([userId]),
+      builder: (context, snapshot) {
+        final String userName = snapshot.data?[userId] ?? userId.split('@').first;
+        final String avatarLetter = userName.isNotEmpty ? userName[0].toUpperCase() : 'U';
+
+        // Générer une couleur cohérente basée sur le nom
+        final int nameHash = userName.hashCode.abs();
+        final List<Color> avatarColors = [
+          Colors.red, Colors.pink, Colors.purple, Colors.deepPurple,
+          Colors.indigo, Colors.blue, Colors.lightBlue, Colors.cyan,
+          Colors.teal, Colors.green, Colors.lightGreen, Colors.lime,
+          Colors.yellow, Colors.amber, Colors.orange, Colors.deepOrange,
+        ];
+        final Color avatarColor = avatarColors[nameHash % avatarColors.length];
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: avatarColor,
+                child: Text(
+                  avatarLetter,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          userName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                        Text(
+                          DateFormat('dd/MM/yyyy HH:mm').format(date),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        message,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+
 }

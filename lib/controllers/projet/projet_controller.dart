@@ -258,4 +258,27 @@ class ProjetController extends GetxController {
       isLoading.value = false;
     }
   }
+
+
+  // Ajouter cette méthode au ProjetController
+  Future<void> updateProjectStatusAndProgress(String projectId, String newStatus, int newProgress) async {
+    isLoading.value = true;
+    errorMessage.value = '';
+
+    try {
+      // Mettre à jour à la fois la progression et le statut dans une seule opération
+      await _firestore.collection('projects').doc(projectId).update({
+        'progress': newProgress,
+        'statut': newStatus
+      });
+
+      // Reload all projects
+      await fetchUserProjects();
+    } catch (e) {
+      errorMessage.value = e.toString();
+      throw e;
+    } finally {
+      isLoading.value = false;
+    }
+  }
 }
