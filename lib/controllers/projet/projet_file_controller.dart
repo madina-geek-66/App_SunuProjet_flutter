@@ -2,10 +2,14 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:madina_diallo_l3gl_examen/controllers/projet/projet_controller.dart';
 import 'package:path/path.dart' as path;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../models/projet_file.dart';
+import '../../models/user_model.dart';
+
 
 class ProjetFileController extends GetxController {
   final RxList<ProjetFile> projectFiles = <ProjetFile>[].obs;
@@ -14,6 +18,9 @@ class ProjetFileController extends GetxController {
 
   // Instance Supabase
   final SupabaseClient _supabase = Supabase.instance.client;
+
+  // Instance Firestore pour accéder aux utilisateurs
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Limite de taille de fichier par rôle (en Mo)
   final Map<String, double> fileSizeLimits = {
@@ -32,10 +39,11 @@ class ProjetFileController extends GetxController {
     try {
       // Requête à la table "project_files" dans Supabase
       final response = await _supabase
-          .from('projectfiles')
+          .from('project_files')
           .select()
-          .eq('projetId', projectId)
-          .order('dateAjout', ascending: false);
+          .eq('projet_id', projectId)
+          .order('date_ajout', ascending: false);
+      print("Réponse brute de Supabase: $response");
 
       // Convertir les résultats en objets ProjetFile
       final List<ProjetFile> files = response.map<ProjetFile>((file) =>
@@ -43,12 +51,17 @@ class ProjetFileController extends GetxController {
       ).toList();
 
       projectFiles.assignAll(files);
+      print("ID du projet pour récupération: $projectId");
     } catch (e) {
       errorMessage.value = e.toString();
+      print("Erreur fetchProjectFiles: $e");
     } finally {
       isLoading.value = false;
     }
   }
+
+
+
 
   // Sélectionner et télécharger un fichier
   Future<void> pickAndUploadFile(String projectId, String userRole) async {
@@ -75,39 +88,21 @@ class ProjetFileController extends GetxController {
 
         isLoading.value = true;
 
-        // Générer un nom de fichier unique
-        String uniqueFileName = '${DateTime.now().millisecondsSinceEpoch}_$fileName';
-        String filePath = 'project_files/$projectId/$uniqueFileName';
+        // Obtenir l'ID de l'utilisateur actuel
+        final currentUserId = Get.find<ProjetController>().currentUserId;
 
-        // Télécharger le fichier vers Supabase Storage
-        final uploadResponse = await _supabase
-            .storage
-            .from('projectfiles')
-            .upload(
-            '$projectId/$uniqueFileName',
-            file,
-            fileOptions: const FileOptions(cacheControl: '3600', upsert: false)
+        // Étape 1: Upload du fichier
+        final fileUrl = await uploadFileToStorage(file, projectId, fileName);
+
+        // Étape 2: Insertion des métadonnées
+        await insertFileMetadata(
+            fileName,
+            path.extension(file.path),
+            fileSizeInMB,
+            currentUserId,
+            projectId,
+            fileUrl
         );
-
-        // Obtenir l'URL publique du fichier
-        final String fileUrl = _supabase
-            .storage
-            .from('projectfiles')
-            .getPublicUrl('$projectId/$uniqueFileName');
-
-        // Créer l'objet ProjetFile
-        final now = DateTime.now();
-
-        // Enregistrer les métadonnées dans la table project_files
-        final insertResponse = await _supabase.from('projectfiles').insert({
-          'nom': fileName,
-          'type': path.extension(file.path),
-          'taille': fileSizeInMB,
-          'ajoutePar': currentUserId,
-          'dateAjout': now.toIso8601String(),
-          'projetId': projectId,
-          'fileUrl': fileUrl
-        }).select();
 
         // Actualiser la liste des fichiers
         await fetchProjectFiles(projectId);
@@ -121,6 +116,7 @@ class ProjetFileController extends GetxController {
         );
       }
     } catch (e) {
+      print("ERREUR D'UPLOAD: $e");
       errorMessage.value = e.toString();
       Get.snackbar(
         'Erreur',
@@ -138,23 +134,20 @@ class ProjetFileController extends GetxController {
   Future<void> deleteFile(ProjetFile file) async {
     try {
       // Extraire le chemin du fichier à partir de l'URL
-      final Uri uri = Uri.parse(file.fileUrl);
-      final List<String> pathSegments = uri.pathSegments;
-      final String storagePath = pathSegments.length > 1
-          ? pathSegments.sublist(pathSegments.indexOf('projectfiles') + 1).join('/')
-          : '${file.projetId}/${path.basename(file.fileUrl)}';
+      final String fileName = path.basename(file.fileUrl);
+      final String storagePath = "${file.projetId}/$fileName";
 
       // Supprimer le fichier de Supabase Storage
       await _supabase
           .storage
-          .from('projectfiles')
+          .from('project_files')
           .remove([storagePath]);
 
       // Supprimer les métadonnées de la table project_files
       await _supabase
-          .from('projectfiles')
+          .from('project_files')
           .delete()
-          .eq('uid', file.uid);
+          .eq('id', file.uid);
 
       // Actualiser la liste des fichiers
       await fetchProjectFiles(file.projetId);
@@ -165,6 +158,7 @@ class ProjetFileController extends GetxController {
         snackPosition: SnackPosition.BOTTOM,
       );
     } catch (e) {
+      print("Erreur de suppression: $e");
       Get.snackbar(
         'Erreur',
         'Échec de la suppression du fichier: ${e.toString()}',
@@ -173,19 +167,93 @@ class ProjetFileController extends GetxController {
     }
   }
 
-  // Récupérer le nom de l'utilisateur ayant ajouté le fichier
+  // Récupérer le nom de l'utilisateur depuis Firebase
   Future<String> getUserName(String userId) async {
     try {
-      // Requête à la table des utilisateurs dans Supabase
-      final response = await _supabase
-          .from('users')
-          .select('fullName')
-          .eq('id', userId)
-          .single();
+      // Récupération depuis Firebase au lieu de Supabase
+      final DocumentSnapshot userDoc = await _firestore
+          .collection('users')
+          .doc(userId)
+          .get();
 
-      return response['fullName'] ?? userId.split('@').first;
+      if (userDoc.exists) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        return userData['fullName'] ?? userId.split('@').first;
+      } else {
+        return userId.split('@').first;
+      }
     } catch (e) {
+      print("Erreur getUserName: $e");
       return userId.split('@').first;
+    }
+  }
+
+  // Étape 1 : Upload du fichier vers Supabase Storage
+  Future<String> uploadFileToStorage(File file, String projectId, String fileName) async {
+    try {
+      // Générer un nom de fichier unique pour éviter les conflits
+      String uniqueFileName = '${DateTime.now().millisecondsSinceEpoch}_$fileName';
+      String filePath = '$projectId/$uniqueFileName';
+
+      print("Début upload vers bucket 'projectfiles', chemin: $filePath");
+
+      // Vérifier si le bucket existe
+      final buckets = await _supabase.storage.listBuckets();
+      print("Buckets disponibles: ${buckets.map((b) => b.name).join(', ')}");
+
+      // Upload du fichier
+      await _supabase.storage
+          .from('projectfiles')  // Vérifiez que ce bucket existe dans votre projet Supabase
+          .upload(
+          filePath,
+          file,
+          fileOptions: const FileOptions(
+              cacheControl: '3600',
+              upsert: true,
+              contentType: 'application/octet-stream'
+          )
+      );
+
+      // Générer l'URL publique
+      final String fileUrl = _supabase.storage
+          .from('projectfiles')
+          .getPublicUrl(filePath);
+
+      print("Fichier uploadé avec succès, URL: $fileUrl");
+      return fileUrl;
+    } catch (e) {
+      print("Erreur détaillée pendant l'upload: $e");
+      throw Exception("Échec de l'upload: $e");
+    }
+  }
+
+  // Étape 2 : Insertion des métadonnées dans la table
+  Future<void> insertFileMetadata(
+      String fileName,
+      String fileExtension,
+      double fileSize,
+      String userId,
+      String projectId,
+      String fileUrl) async {
+    try {
+      final now = DateTime.now();
+      //final uuid = Uuid();
+      await _supabase
+          .from('project_files')
+          .insert({
+        'nom': fileName,
+        'type': fileExtension,
+        'taille': fileSize,
+        'ajoute_par': userId,
+        'date_ajout': now.toIso8601String(),
+        'projet_id': projectId,
+        'file_url': fileUrl
+      });
+
+      print("Métadonnées insérées avec succès");
+    } catch (e) {
+      print("Erreur d'insertion des métadonnées: $e");
+      throw Exception("Échec de l'insertion des métadonnées: $e");
     }
   }
 }

@@ -33,6 +33,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     Get.find<TacheController>().fetchTachesByProject(widget.projectId);
+    Get.find<ProjetFileController>().fetchProjectFiles(widget.projectId);
   }
 
   @override
@@ -346,11 +347,6 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
 
 
 
-  // Widget _buildMembersTab() {
-  //   return const Center(
-  //     child: Text('Contenu de l\'onglet Membres à implémenter'),
-  //   );
-  // }
 
   Widget _buildMembersTab() {
     final currentUserId = projetController.currentUserId;
@@ -586,6 +582,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
     // Déterminer le rôle de l'utilisateur actuel
     final userRole = projet.memberRoles[currentUserId] ?? "Membre d'équipe";
 
+
     return Scaffold(
       body: Obx(() {
         if (projetFileController.isLoading.value) {
@@ -681,12 +678,15 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
   }
 
 // Mise à jour de la méthode de téléchargement pour fonctionner avec Supabase
+
+
+
   Future<void> _downloadFile(ProjetFile file) async {
     try {
-      // La méthode la plus simple est d'ouvrir l'URL dans le navigateur
-      // Comme l'URL est publique avec Supabase
-      if (await canLaunch(file.fileUrl)) {
-        await launch(file.fileUrl);
+      // Vérifier si l'URL peut être lancée
+      final Uri uri = Uri.parse(file.fileUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
       } else {
         Get.snackbar(
           'Erreur',
@@ -695,6 +695,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
         );
       }
     } catch (e) {
+      print("Erreur de téléchargement: $e");
       Get.snackbar(
         'Erreur',
         'Erreur lors du téléchargement: ${e.toString()}',

@@ -59,18 +59,33 @@ class ProjetFile {
   }
 
   // Factory pour créer un objet à partir des données de Supabase
+  // factory ProjetFile.fromSupabase(Map<String, dynamic> map) {
+  //   return ProjetFile(
+  //     uid: map['id']?.toString() ?? '',
+  //     nom: map['nom'] ?? '',
+  //     type: map['type'] ?? '',
+  //     taille: (map['taille'] ?? 0.0).toDouble(),
+  //     ajoutePar: map['ajoutePar'] ?? '',
+  //     dateAjout: map['dateAjout'] != null
+  //         ? DateTime.parse(map['dateAjout'])
+  //         : DateTime.now(),
+  //     projetId: map['projetId'] ?? '',
+  //     fileUrl: map['fileUrl'] ?? '',
+  //   );
+  // }
+
   factory ProjetFile.fromSupabase(Map<String, dynamic> map) {
     return ProjetFile(
       uid: map['id']?.toString() ?? '',
       nom: map['nom'] ?? '',
       type: map['type'] ?? '',
       taille: (map['taille'] ?? 0.0).toDouble(),
-      ajoutePar: map['ajoutePar'] ?? '',
-      dateAjout: map['dateAjout'] != null
-          ? DateTime.parse(map['dateAjout'])
+      ajoutePar: map['ajoute_par'] ?? '',
+      dateAjout: map['date_ajout'] != null
+          ? DateTime.parse(map['date_ajout'])
           : DateTime.now(),
-      projetId: map['projetId'] ?? '',
-      fileUrl: map['fileUrl'] ?? '',
+      projetId: map['projet_id'] ?? '',
+      fileUrl: map['file_url'] ?? '',
     );
   }
 }

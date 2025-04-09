@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:madina_diallo_l3gl_examen/controllers/projet/projet_file_controller.dart';
 import 'package:madina_diallo_l3gl_examen/controllers/projet/tache_controller.dart';
+import 'package:madina_diallo_l3gl_examen/screens/admin/admin_dashboard.dart';
 import 'package:madina_diallo_l3gl_examen/screens/authentification/login_page.dart';
 import 'package:madina_diallo_l3gl_examen/screens/authentification/register_page.dart';
 import 'package:madina_diallo_l3gl_examen/screens/home.dart';
@@ -57,6 +58,11 @@ class MyApp extends StatelessWidget {
         GetPage(name: '/project-details/:id', page: () => ProjectDetailPage(projectId: Get.parameters['id']!)),
         GetPage(name: '/add-member', page: () => AddMemberPage(projectId: Get.parameters['id']!)),
         GetPage(name: '/add-task', page: () => AddTaskPage(projectId: Get.parameters['id']!)),
+        GetPage(
+          name: '/dashboard',
+          page: () => const AdminDashboard(),
+        ),
+
       ],
     );
   }

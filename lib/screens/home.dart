@@ -107,7 +107,10 @@ class _HomeState extends State<Home> {
               ],
             ),
           ),
-          _buildDrawerItem(Icons.dashboard, 'Tableau de bord', '/dashboard'),
+          //_buildDrawerItem(Icons.dashboard, 'Tableau de bord', '/dashboard'),
+          Obx(() => Get.find<AuthController>().userModel.value?.role == 'admin'
+              ? _buildDrawerItem(Icons.dashboard, 'Tableau de bord', '/dashboard')
+              : const SizedBox.shrink()),
           _buildDrawerItem(Icons.description, 'Projets', '/projects'),
           _buildDrawerItem(Icons.people, 'Équipe', '/team'),
           _buildDrawerItem(Icons.settings, 'Paramètres', '/settings'),
